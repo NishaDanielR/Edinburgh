@@ -1,0 +1,290 @@
+---
+title: "Statistical Modelling Report"
+author: "Nisha Daniel"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+Word Count:   lines words bytes chars nonws
+               177   849  5698  5692  4557
+          
+
+# **Quit Smoking! Would You Like to have Vegetables and Fish or Red
+Meat?**
+
+Lifestyle behaviours can win or lose life itself. The following
+statistical analysis supports a research on Colorectal Cancer(CRC)
+prevalence to build a statistical model that identify healthy lifestyle
+behaviours and to suggest any modification to hazardous habits, based on
+the real-world Case Control Colorectal Cancer dataset collected in
+Scotland.
+
+## Pre-preparations
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Loading Libraries
+library(tinytex)
+library(tidyverse)
+library(Hmisc)
+library(gtsummary)
+library(cowplot)
+
+
+#Reading in the data
+crc_original <- read_csv("Case Control CRC(1).csv")
+view(crc_original)
+#check for missing data
+colSums(is.na(crc_original))
+
+```
+
+## DATA WRANGLING
+
+After reading in the data and checking for any missing data, all
+categorical variables are recoded into factors. Age variable is treated
+as an integer.
+
+```{r CRC}
+categories = c("Group", "Sex", "FamHist", "DepCat", "Smoking", "RedMeat", "Veg", "Fish")
+crc <-
+crc_original %>%
+mutate(Group = factor(Group, levels = c("Control", "CRC"), labels = c("Control", "CRC")),
+FamHist = factor(FamHist, levels = c(1, 2, 3), labels = c("No", "Immediate", "Distant")),
+Sex = factor(Sex, levels = c(1, 2), labels = c("Male", "Female")),
+DepCatC = factor(DepCat, levels = c(1:7), labels = c(1:7)),
+Smoking = factor(Smoking, levels = c(1 , 2 , 3), labels = c("Non", "Current", "Ex")),
+RedMeat = factor(RedMeat, levels = c(1, 2), labels = c("High", "Low")),
+Veg = factor(Veg, levels = c(1, 2), labels = c("High", "Low")),
+Fish = factor(Fish, levels = c(1, 2), labels = c("High", "Low")),
+Age = as.integer(Age))
+
+summary(crc)
+
+```
+
+# DATA EXPLORATION USING SIMPLE DESCRIPTIVE METHODS(numericals and graphical)
+
+## Data Visualization of Distributon of Age
+
+Let us explore the variable, Age, to see any relationship with the
+outcome variable, CRC.
+
+```{r AgePlotGrid}
+
+plot1 <- crc %>%
+ggplot()+
+geom_histogram(aes(Age), bins = 15, colour = "grey", fill = "green") +
+geom_vline(aes(xintercept = mean(Age)), colour = 'yellow', size = 1, show.legend = TRUE) +
+geom_vline(aes(xintercept = median(Age)), colour = 'red', size = 1, show.legend = TRUE) +
+theme_bw() +
+labs(title = "Age Distribution", )
+
+plot2 <- crc %>%
+ggplot() +
+geom_boxplot(aes(Group, y = Age, colour = Group)) +
+theme_bw() +
+labs(title = "Age Distribution by Group")
+
+plot_grid(plot1, plot2)
+```
+
+The mean and median of Age is above 50 years, citing the risky age
+group.A two sample T-test is further done in hypothesis testing of Age,
+to see if there's a significant difference between the means of Age, as
+it is a continuous variable.
+
+```{r test}
+t.test(Age ~ Group, data = crc)
+
+```
+
+The mean age in the CRC group (63.194) is significantly higher than the
+control group (50.218). Therefore, **it is likely that the Age variable
+is required in the model.**
+
+A categorical variable called AgeQ is created for further analysis
+checking the linear relationship.
+
+```{r Age1}
+crc <- crc %>%
+mutate(AgeQ =cut2(Age,g=4))
+table(crc$AgeQ)
+
+summary(crc$Age)
+
+```
+
+Although parameters are not increasing in equal increments, there is
+still a general increasing trend visible. For simplicity within the
+model, age will be kept as a continuous variable.
+
+### Smoking as a variable To get the proportion of different types of smokers
+
+```{r CheckSmokers}
+prop.table(table(crc$Smoking))
+```
+
+## Age:Smoke
+
+### Visualizing Interation of Age:Smoking status of the participants
+
+The interaction between Age and Smoking habit is studied and plotted.
+
+```{r SmokePlot}
+
+ggplot(crc, aes(x = Smoking, y = Age)) +  # Map Smoking to x-axis, Age to y-axis
+  geom_boxplot(aes(color = Smoking)) +  # Color by Smoking category
+  labs(title = "Smoking vs. Age", x = "Smoking Status", y = "Age") +
+  theme_classic()
+```
+
+A finding from the boxplot chart is that, with high age, there is
+increased smoking habit, as observed across the three categories.
+Further performing Chi Square test, as Smoking is grouped as a
+categorical variable in the dataset.
+
+```{r Chitest Smoke}
+#create contingent  table
+contingentb_smoke_group <- as.data.frame.matrix(table(crc$Smoking, crc$Age))
+#perform chi square test
+chisq.test(contingentb_smoke_group)
+```
+
+With a low p-value, there is a statistically significant difference in
+the rates of colorectal cancer between different smoking categories.
+**This variable, along with the interaction, will feature in the final
+model.**
+
+```{r other variables}
+#Enlist all variables with p-values
+crc %>%
+tbl_summary(include = c(Sex, Age, FamHist, DepCat, Smoking, RedMeat, Veg, Fish),
+by = Group, percent = "row",
+label = list(Age = "Age in years",
+FamHist = "Family History",
+DepCat = "Deprivation Category",
+RedMeat = "Red Meat Consumpiton",
+Veg = "Vegetable Consumption",
+Fish = "Fish Consumption")) %>%
+bold_labels() %>%
+add_p(pvalue_fun = ~ style_pvalue(.x, digits = 3))
+```
+
+# CHOICE OF METHODOLOGY *Logistic Regression Model*
+
+A logistic regression model is the most suitable as the outcome variable
+is binary. The model is created using the step function, starting with
+forward selection. The function will then add and remove variables in a
+stepwise fashion, until the lowest possible AIC is attained.
+
+# MODEL FITTING
+
+## Deriving the Final Model
+
+```{r Model}
+crc_model <- step(glm(Group ~ Age,
+family = binomial("logit"),
+data = crc),
+scope = list(lower = .~1,
+upper = .~. + Sex + FamHist + DepCat + Smoking + RedMeat + Veg + Fish,
+direction = "forward"))
+summary(crc_model)
+```
+
+## Analysing Variance
+
+```{r ANOVA}
+anova(crc_model, test = "Chisq")
+
+```
+
+Following the results of ANOVA, two functions are used to fine-tune the
+model.
+
+### a. Using drop1
+
+```{r drop1}
+drop1(crc_model, test = "Chisq")
+```
+
+### b. Using cbind
+
+```{r cbind}
+cbind(OR = exp(crc_model$coefficients),
+exp(confint(crc_model)))
+```
+
+## Tabulating the Key parameters
+
+```{r table}
+
+tbl_regression(crc_model, exponentiate = TRUE, message = FALSE,
+label = list(Age = "Age Category",
+FamHist = "Family History",
+RedMeat = "Red Meat Intake",
+Veg = "Veg diet",
+Fish = "Fish Intake")) %>%
+bold_labels()
+
+```
+
+# MODEL INTERPRETATION
+
+The final statistical model is arrived at. The following prognostic
+variables contribute significantly to colorectal cancer risk: Age,
+Family History, Smoking Status and Red Meat consumption, individually.
+There is a positive interaction between the Age and Smoking variables
+with the outcome variable, which is also included in the model. There is
+low effects for Sex and Deprivation status. Nevertheless, the dietary
+habits like following vegan diet, intake of fish or red meat or even
+conducting hazardous habits are well within the control of the human
+participants. Hence, considering only the variables within the ‘locus of
+control’ of the participants, a separate sub-model is co-created for the
+**Public** using four variables.
+
+### Model to the BioStatistician / Researcher:
+
+The final model is: Group \~ Age + Smoking + FamHist + RedMeat +
+Age:Smoking
+
+### Model for Public Health Awareness for the Public:
+
+The final model is: Group \~ Smoking(**remove habit**) +
+RedMeat(**decrease intake**) + Veg(**increase intake**) +
+Fish(**increase intake**) + Sex(**women at higher risk**)
+
+## Summary of Recommendations:
+
+1.  Compared to non-smokers, current smokers increase the risk of CRC by
+    2.34x, whereas ex-smokers also have an increased risk of 1.38x. \n
+2.  With each year increase in age, the risk of CRC increases by 1.13x.
+    \n
+3.  Combining Age and Smoking is a hig risk indicator for people above
+    40 years.
+4.  In terms of diet, a low red meat diet lowers one’s risk of
+    colorectal cancer, with a odds raio of 0.61x, as against Veg diet
+    and fish consumption. \n
+5.  Family history is a necessary contributor to the development of CRC
+    with an odds ratio range of 0.77x to 9.5x, nonetheless, it is out of
+    the control of the patient.
+
+## Bibliography:
+
+1.Petrie, A., & Sabin, C. (2020). Medical statistics at a glance (4th
+ed.). Wiley-Blackwell.\n  2.Kirkwood, B.R. and Sterne, J.A.C. (2003)
+Essential Medical Statistics. 2nd Edition, Blackwell Science, Oxford \n
+3.Janet L. Peacock and Phil J. Peacock () Oxford Handbook of Medical
+Statistics. 2nd Edition, Oxford University Press
+
+## Terminiologies Explained:
+
+*Colorectal Cancer(CRC):*Colorectal cancer is a type of cancer that
+starts in the colon or the rectum. The colon is the large intestine, and
+the rectum is the lower part of the large intestine. /
+
+*Prevalence:*In the context of healthcare and epidemiology, prevalence
+refers to the proportion of a population that has a specific disease or
+characteristic at a particular point in time.

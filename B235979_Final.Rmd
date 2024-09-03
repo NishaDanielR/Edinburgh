@@ -1,0 +1,477 @@
+---
+title: "Statistical Modelling for Epidemiology Final Assignment"
+author: "B235979"
+date: "30.06.2024"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+# Word count:   file lines words bytes chars nonws
+1 B235979_Final.Rmd   203  1944 13448 13448 11124
+
+\newpage
+
+# *COX PROPORTIONAL HAZARD MODEL FOR LONG-TERM EFFECTS RANDOMISED TREATMENT WITH RAMIPRIL*
+
+# Introduction: The Research Context
+  The AIRE trial initially showed a reduced risk of death for patients with heart failure who took Ramipril compared to placebo. The AIREX study followed up on these patients for an additional 3 years after they stopped taking Ramipril, to see if this benefit lasted in the long term. This analysis focuses on the data from these 603 participants, even though they only received Ramipril for about a year on average, to understand the potential long-term effects of this relatively short-term treatment. 
+
+# 1.Task 1 - Exploratory investigations (using appropriate numerical summaries and graphical methods) 
+[Weight: 20%]
+
+## 1.1.Required preparation
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Loading Libraries
+library(tidyverse)
+library(survival) # Switch on survival analysis functions
+library(survminer) 
+library(Hmisc)
+library(gtsummary)
+library(cowplot)
+library(magrittr) 
+library(scales)
+
+
+#Reading in the data
+airex_original <- read_csv("AireXassignment.csv")
+
+glimpse(airex_original)
+```
+
+## 1.2.Data Wrangling
+
+After reading in the data and giving a visual glimpse, all categorical variables are recoded into factors. Age variable is treated as an integer. The dataset is cleaned, renamed and viewed in content table and as a whole.
+
+```{r Ramipril}
+categories = c("Group","Age", "Sex", "HistHT", "HistAngina", "HistMI", "Aspirin", "Diuretic", "UseThromb", "DaysR", "DaysD")
+AireX <-
+airex_original %>%
+transform.data.frame(Group = factor(treat, levels = c(1,2), labels = c("Placebo", "Ramipril")),
+       Mortality = factor(ms, levels = c(1,2), labels = c("Alive", "Dead")),
+       Survivtm = round(survivtm, digit = 2),
+       HistHT = factor(hyp, levels = c(1, 2), labels = c("Absent", "Present")),
+       Sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+       HistAngina = factor(ang, levels = c(1, 2), labels = c("Absent", "Present")),
+       HistMI = factor(pmi, levels = c(1, 2), labels = c("Absent", "Present")),
+       Aspirin = factor(aspirin, levels = c(1, 2), labels = c("Absent", "Present")),
+       Diuretic = factor(diuret, levels = c(1, 2), labels = c("Absent", "Present")),
+       UseThromb = factor(thromb, levels = c(1, 2), labels = c("Absent", "Present")),
+       Age = as.integer(agerand),
+       DaysR = as.integer(rdaten),
+       DaysD = as.integer(dodn)) %>%
+  select(Age,Sex,Survivtm,Mortality,Group,HistHT,HistMI,HistAngina,Diuretic,Aspirin,UseThromb)
+
+contents(AireX)
+view(AireX)
+```
+
+## 1.3. Methods
+
+  Kaplan - Meier plots offer a descriptive visual understanding of survival patterns and potential differences between groups. \n
+  A Kaplan - Meier  analysis is done here, because the outcome variable has a time effect.
+  
+## 1.4. Results - Analysing Survival Curves
+
+**Note: For easier visualization and presentation of codes, grouping by Diseases, Drugs and Demographics are done in the following code chucks**
+
+### 1.4.1.K-M tables of the history of  diseases Hypertension, Angina and Myocardial Infarction
+
+The K-M tables are derived and plotted.
+
+```{r task1 diseases}
+#K-M calculations allowing inclusion of HistHT variable
+htadj.km<-survfit(Surv(Survivtm,Mortality=="Dead")~HistHT+Group,data=AireX)
+
+#K-M calculations allowing inclusion of HistAngina variable
+angadj.km<-survfit(Surv(Survivtm,Mortality=="Dead")~HistAngina+Group,data=AireX)
+
+#K-M calculations allowing inclusion of HistMI variable
+miadj.km<-survfit(Surv(Survivtm,Mortality=="Dead")~HistMI+Group,data=AireX)
+
+```
+ 
+### 1.4.2.Plotting the history of  diseases Hypertension, Angina and Myocardial Infarction using K.M graphs
+
+```{r plot Diseases}
+ plotHT = ggsurvplot(
+  htadj.km, 
+  data = AireX, 
+  size = 1,                  # line size
+  conf.int = F,           # removed confidence interval/ band around each K-M curve for better visibility
+  pval = TRUE,               # Add p-value from log-rank test
+  risk.table = TRUE,         # Add risk table below K-M plot
+  risk.table.col = "strata", # Risk table color by groups
+  legend.labs = c("No Hypertension/Placebo","No Hypertension/Ramipril","Hypertension/Placebo", "Hypertension/Ramipril"),     
+  risk.table.height = 0.5,  # a visible table
+  ggtheme = theme_classic()
+)
+
+plotAngina = ggsurvplot(
+  angadj.km, 
+  data = AireX, 
+  size = 1,                  # line size
+  conf.int = TRUE,           # Adds confidence interval/ band around each K-M curve to just see
+  pval = TRUE,               # Add p-value from log-rank test
+  risk.table = TRUE,         # Add risk table below K-M plot
+  risk.table.col = "strata", # Risk table color by groups
+  legend.labs = c("No Angina/Placebo","No Angina/Ramipril","Angina/Placebo", "Angina/Ramipril"),        
+  risk.table.height = 0.5,   
+  ggtheme = theme_classic()    
+)
+
+plotMI = ggsurvplot(
+  miadj.km, 
+  data = AireX, 
+  size = 1,                  # line size
+  conf.int = F,           # removed confidence interval/ band around each K-M curve for greater visibility
+  pval = TRUE,               # Add p-value from log-rank test
+  risk.table = TRUE,         # Add risk table below K-M plot
+  risk.table.col = "strata", # Risk table color by groups
+  legend.labs = c("No Myocardial Infarction/Placebo","No Myocardial Infarction/Ramipril","Myocardial Infarction/Placebo", "Myocardial Infarction/Ramipril"),       
+  legend.position="bottom",
+  risk.table.height = 0.5,  
+  ggtheme = theme_classic()     
+)        
+
+plotMI
+plotAngina
+plotHT
+
+```
+**Findings:**
+  Absence of history of the three diseases, Hypertension, Angina and MI in the randomised treatment (ACE - ACE inhibitor drug, Ramipril) group shows the highest survival curve. On the contrary, the disease history in the placebo group,without treatment shows poor survival rates, as these curves are at the bottom.\n Since the study[4] is about heart failure participants with a history of myocardial infarction, only HistMI is used for further analyses.
+  Also, as the p values are extremely small, they indicate the plots are important for further statistical testing.\n
+
+
+### 1.4.3.Grid the Association between Time to Mortality and use of  the drugs namely, Aspirin, Thrombolysis and Diuretics
+
+
+```{r task1 drugs}
+#K-M calculations allowing inclusion of diuretic variable
+diuretadj.km<-survfit(Surv(Survivtm,Mortality=="Dead")~Diuretic+Group,data=AireX)
+
+#K-M calculations allowing inclusion of aspirin variable
+aspadj.km<-survfit(Surv(Survivtm,Mortality=="Dead")~Aspirin+Group,data=AireX)
+
+#K-M calculations allowing inclusion of UseThromb variable
+thrombadj.km<-survfit(Surv(Survivtm,Mortality=="Dead")~UseThromb+Group,data=AireX)
+
+```
+
+### 1.4.4.Plotting the use of  the drugs namely, Aspirin, Thrombolysis and Diuretics 
+
+```{r plot Drugs}
+ plotAspirin = ggsurvplot(
+  aspadj.km, 
+  data = AireX, 
+  size = 1,                  # line size
+  conf.int = F,           # confidence interval/ band around each K-M curve is removed
+  pval = TRUE,               # Adds p-value from log-rank test
+  risk.table = TRUE,         # Add risk table below K-M plot
+  risk.table.col = "strata", # Risk table color by groups
+  legend.labs = c("No Aspirin/Placebo","No Aspirin/Ramipril","Aspirin/Placebo", "Aspirin/Ramipril"),       
+  risk.table.height = 0.5,  
+  ggtheme = theme_classic()      
+)
+
+plotThrombolysis = ggsurvplot(
+  thrombadj.km, 
+  data = AireX, 
+  size = 1,                  # line size
+  conf.int = F,           # Removes confidence interval/ band around each K-M curve
+  pval = TRUE,               # Adds p-value from log-rank test
+  risk.table = TRUE,         # Add risk table below K-M plot
+  risk.table.col = "strata", # Risk table color by groups
+  legend.labs = c("No Thromb/Placebo","No Thromb/Ramipril","Thromb/Placebo",  "Thromb/Ramipril"),     
+  risk.table.height = 0.5,  
+  ggtheme = theme_classic()      
+)
+
+plotDiuretic = ggsurvplot(
+  diuretadj.km, 
+  data = AireX, 
+  size = 1,                  # line size
+  conf.int = F,           # Removes confidence interval/ band around each K-M curve
+  pval = TRUE,               # Adds p-value from log-rank test
+  risk.table = TRUE,         # Add risk table below K-M plot
+  risk.table.col = "strata", # Risk table color by groups
+  legend.labs = c("No Diuretic/Placebo","No Diuretic/Ramipril","Diuretic/Placebo", "Diuretic/Ramipril"),  
+  risk.table.height = 0.5,  
+  ggtheme = theme_classic()      
+)        
+
+plotAspirin
+plotThrombolysis
+plotDiuretic
+
+```
+
+**Findings:**
+  Patients on diuretics probably have chances of more severe disease, and are therefore at higher risk of death. Ramipril therefore seems to return their risk to that of the lower risk patients who don't have diuretics. For the latter group, Ramipril doesn't make that much difference.\n
+  Similarly the absence of concomittant Aspirin or use of thrombolysis before randomisation shows poor survival rates, as these curves are at the bottom.\n
+  However, the presence of Ramipril alone without aspirin raises the survival probability to the highest. **So the variable Aspirin is not further considered.** \n
+  But UseThromb variable shows to be a very important determining factor as the survival curve goes high when Thrombolysis agents are used in the randomised treatment cases.\n
+  Also, as the p values are extremely small, they indicate the plots are important for further statistical testing.
+  
+## 1.4.5.Association between Time to Mortality and Age and Sex
+ Data Visualization is used to explore the variables, Age and Sex, to see any relationship with the outcome variable, deaths.
+
+```{r AgePlotGrid}
+
+AireX <- AireX %>%
+mutate(AgeQ = cut2(Age, g = 5))
+
+
+plotAge <- AireX %>%
+ggplot()+
+geom_histogram(aes(Age), bins = 15, colour = "grey", fill = "green") +
+geom_vline(aes(xintercept = mean(Age)), colour = 'yellow', size = 1, show.legend = TRUE) +
+geom_vline(aes(xintercept = median(Age)), colour = 'red', size = 1, show.legend = TRUE) +
+theme_bw() +
+labs(title = "Age Distribution")
+
+plotAgeGroup <- AireX %>%
+ggplot() +
+geom_boxplot(aes(Group, y = Age, colour = Group)) +
+theme_bw() +
+labs(title = "Age Distribution by Group")
+
+plotAgeQ <- AireX %>%
+ggplot() +
+geom_bar(aes(AgeQ), colour = "grey", fill = "blue") +
+theme_bw() +
+labs(title = "Age Categorised Distribution")
+
+plotSex <- AireX %>%
+  ggplot() +
+geom_boxplot(aes(Sex, y = Age, colour = Sex)) +
+theme_bw() +
+labs(title = "Age and Sex Distribution")
+
+plot_grid(plotAge, plotAgeGroup, plotAgeQ, plotSex)
+
+```
+**Findings:**
+  From the boxplot visualization, we can infer that the female participants who are above 60 years, are more likely to survive longer amidst CHF and randomised treatment, as compared to their male counterparts.
+
+# Task 2 - Assessing any evidence of association 
+[Weight: 10%]
+
+## 2.1.Methods - Use of log-rank test to compare definite survival between groups 
+
+  The log-rank test is an inferential approach used in survival analysis to compare the survival distributions between two groups and to test the null hypothesis. 
+  The log-rank test provides a p-value, which represents the probability of observing a test statistic. A low p-value (typically less than 0.05) suggests that the observed difference in survival is unlikely to be due to chance and provides evidence to reject the null hypothesis.
+  The log-rank test also has certain assumptions, such as proportional hazards and independent censoring. Violations of these assumptions can affect the validity of the test.
+
+## 2.2. Results
+
+### Log-rank test for treatment effect (adjusted for each of the baseline characteristic)
+```{r log-ranks}
+# log-rank test 
+survdiff(Surv(Survivtm,Mortality=="Dead")~Group,data=AireX)
+
+# log-rank test adjusted for Diuretic
+survdiff(Surv(Survivtm,Mortality=="Dead")~Diuretic+Group,data=AireX)
+
+# log-rank test adjusted for Concomitant Aspirin  
+survdiff(Surv(Survivtm,Mortality=="Dead")~Aspirin+Group,data=AireX)
+
+# log-rank test adjusted for Thrombolysis Usage
+survdiff(Surv(Survivtm,Mortality=="Dead")~UseThromb+Group,data=AireX)
+
+# log-rank test adjusted for History of Hypertension
+survdiff(Surv(Survivtm,Mortality=="Dead")~HistHT+Group,data=AireX)
+
+# log-rank test adjusted for History of MI
+survdiff(Surv(Survivtm,Mortality=="Dead")~HistMI+Group,data=AireX)
+
+# log-rank test adjusted for History of Angina
+survdiff(Surv(Survivtm,Mortality=="Dead")~HistAngina+Group,data=AireX)
+
+# log-rank test adjusted for Sex
+survdiff(Surv(Survivtm,Mortality=="Dead")~Sex+Group,data=AireX)
+
+# log-rank test adjusted for different Age ranges
+survdiff(Surv(Survivtm,Mortality=="Dead")~AgeQ+Group,data=AireX)
+```
+**Findings:**
+ The p-value (0.002) is very low, indicating a statistically significant difference between the observed and expected counts.
+  Yet, the survdiff function(and the log-rank tests) only provides a test of the overall difference. To understand the specific direction of the effects (which group has better survival), pairwise comparisons using post-hoc tests with appropriate p-value adjustments is performed.
+
+```{r specific}
+# using pairwise_survdiff function for more specific p-values
+
+pairwise_survdiff(formula=Surv(Survivtm,Mortality=="Dead")~Diuretic+Group,data=AireX,p.adjust.method = "bonferroni",na.action = na.omit)
+
+pairwise_survdiff(formula=Surv(Survivtm,Mortality=="Dead")~HistMI+Group,data=AireX,p.adjust.method = "bonferroni",na.action = na.omit)
+
+pairwise_survdiff(formula=Surv(Survivtm,Mortality=="Dead")~UseThromb+Group,data=AireX,p.adjust.method = "bonferroni",na.action = na.omit)
+
+pairwise_survdiff(formula=Surv(Survivtm,Mortality=="Dead")~AgeQ+Group,data=AireX,p.adjust.method = "bonferroni",na.action = na.omit)
+
+pairwise_survdiff(formula=Surv(Survivtm,Mortality=="Dead")~Sex+Group,data=AireX,p.adjust.method = "bonferroni",na.action = na.omit)
+
+
+```
+**Findings:**
+  Diuretic=Present, Group=Placebo (p-value = 0.00553) suggests a significant difference compared to Diuretic=Absent, Group=Placebo. This means survival may be different between these groups.
+  Similarly, UseThromb=Present, Group=Placebo (p-value = 0.00038) suggests a statistical significance, even in UseThromb=Present, Group=Ramipril. So much so, HistMI=Present, Group=Ramipril has another statistically significant p-value, 0.00420, rejecting the null hypothesis.  
+   Age group 69 - 74, (p-value =0.01892) and  Male (p-value =0.017) participants seem to show a significant risk factor to monitor clinically, despite taking Ramipril.  
+
+# Task 3 - Cox Proportional Model
+[Weight: 50%]
+
+## 3.1. Methods
+
+A cox proportional hazards model is derived by identifying various interactions. Based on the above estimates, assessments and the survival curves, the variables, UseThromb, Diuretics and HistMI are considered  for deriving interactions. Since, the variables are time-dependent, (so is the foundation of the AireX study itself) proportional hazards are statistically measured using Cox proportional Hazards model.
+
+```{r interactions}
+#finding interactions
+treatment.ph<-coxph(Surv(Survivtm,Mortality=="Dead")~Group,data=AireX)
+
+#finding interactions in UseThromb
+treatment1.ph<-coxph(Surv(Survivtm,Mortality=="Dead")~UseThromb+Group +Group:UseThromb,data=AireX)
+
+#finding interactions in Diuretic
+treatment2.ph<-coxph(Surv(Survivtm,Mortality=="Dead")~Diuretic+Group +Group:Diuretic,data=AireX)
+
+#finding interactions in HistMI
+treatment3.ph<-coxph(Surv(Survivtm,Mortality=="Dead")~HistMI+Group +Group:HistMI,data=AireX)
+
+#finding interactions in Age Range
+treatment4.ph<-coxph(Surv(Survivtm,Mortality=="Dead")~AgeQ+Group+Group:AgeQ,data=AireX)
+
+#finding interactions in Sex
+treatment5.ph<-coxph(Surv(Survivtm,Mortality=="Dead")~Sex+Group+Group:Sex,data=AireX)
+
+summary(treatment.ph)
+summary(treatment1.ph)
+summary(treatment2.ph)
+summary(treatment3.ph)
+summary(treatment4.ph)
+summary(treatment5.ph)
+
+```
+## 3.2.Results
+
+Bundling up the above interactions to describe the Model, which gives the numerical results of the PH tests for the shortlisted explanatory variables, Diuretic, HistMI and UseThromb.
+
+```{r Cox model}
+
+cox_model <- coxph(formula = Surv(Survivtm,Mortality=="Dead") ~ Group + Diuretic:Group + UseThromb:Group + HistMI, data = AireX) # cox model derived
+summary(cox_model) # summarises the numerical values of the model
+```
+**Findings:**
+  We find 200 events out of 603 total participants. Formaly, statistical tests like the score test and the likelihood ratio test assess the PH assumption. This constructed Cox regressive model investigates the effects of several factors on survival time (time until death) in the AireX data.
+  The Cox model shows that the ACE inhibitor, Ramipril significantly reduces the hazard of death compared to the placebo, with a hazard ratio of 0.6410.
+
+1. Group (Ramipril vs. Placebo)'s effect is not significant (p-value = 0.9937). The hazard ratio (HR) is very close to 1 (1.0026), suggesting that Ramipril might not have a substantial impact on mortality compared to Placebo in this model.
+2. Presence of Myocardial Infarction (MI) has a positive coefficient (0.50187) and a hazard ratio (HR) greater than 1 (1.6518), indicating that individuals with a history of MI have a higher risk of death (increased hazard) compared to those without. (Highly significant p-value: 0.000848)
+
+**Interpreting the Interaction Terms:** 
+  
+  Inspection of the Kaplan-Meier plots for the survival analysis stratified by both treatment status and diuretic use, Use of Thrombolytics and a history of Myocardial Infarction, suggested that the effect of ramipril may be modified by these explanatory variable at baseline. Therefore an interaction term for was included in the Cox-PH model. The findings from which are:
+
+1. GroupPlacebo:DiureticPresent interaction shows a positive coefficient (0.71417) and a hazard ratio (HR) greater than 1 (2.0425). This suggests that for individuals in the Placebo group who received Diuretics, the risk of death is 2x times higher compared to those who took Ramipril. (Significant p-value: 0.001869)
+2. GroupRamipril:DiureticPresent: The coefficient (-0.05047) and HR (0.9508) are close to 1, indicating that Diuretic use might not significantly alter the effect of Ramipril on mortality in this model. (p-value = 0.833822)
+3. GroupPlacebo:UseThrombPresent: This term has a negative coefficient (-0.71359) and a HR (0.4899) considerably less than 1 which highlights that, for individuals in the Placebo group who received thrombolytic therapy, the risk of death might be even higher compared to those who didn't. (Highly significant p-value: 0.000128)
+4. GroupRamipril:UseThrombPresent: The coefficient (-0.56386) and HR (0.5690) are negative, indicating that for those in the Ramipril group who received thrombolytic therapy, the benefit of Ramipril might be present (lower mortality risk) but not statistically significant in this model (p-value = 0.012129)
+
+# Task 4 - Discussing Assumptions
+[Weight: 10%]
+
+## 4.1. Methods
+
+**Schoenfeld residuals** are plotted against time to visually inspect for violations of the proportional hazards assumption. 
+**Proportional Hazards (PH Assumption)** is the most crucial assumption that the effect of a covariate on the risk(**hazard ratio (HR)**) of the event (e.g., death) is proportional over time. These methods justify testing of Cox model in the true and more accurate sense. The Censoring events are also taken into account.
+
+## 4.2.Results
+### Checking proportional hazards and plot smoothed residuals:
+
+```{r PH}
+cox.zph(cox_model)  # verifies PH of the proposed model
+```
+
+Plotting the cox.zph as below,
+
+```{r task 4}
+# check that the proportional hazards assumption is a reasonable one. 
+
+ggcoxzph(fit=cox.zph(cox_model),point.col="blue",point.size=1,caption="PH test for Treatment",ggtheme = theme_bw())  # good agreement with PH assumption as plotted.
+
+```
+**Findings:**
+  The p-value of 0.80 suggests that there is no reason to reject the null hypothesis of proportional hazards. The PH assumption is reasonable for each one of the parameters shortlisted here and so the model is acceptable overall, despite some evidence of effect modification - the treatment in the model(proposed) is perhaps effective in the higher risk subgroup, but not for the other subgroup.
+  This is also shown by the plot - the residuals are constant over time (horizontal smoothed estimate line) with no systematic patterns, and so there seems to be no reason to doubt PH assumption.
+  Based on the observed p-values, and apparent uniformity of the Schoenfeld residuals, there is insufficient evidence to reject the assumption of proportionality, meaning, there is reason to assume PH.
+
+# Task 5 - Final Conclusions on the effect of Ramipril on all-cause mortality from the AIRE-X study.
+
+  This research question is concerned with survival from Clinical Heart Failure randomised with treatment with Ramipril, an ACE inhibitor.
+
+**Outcome variable:** Death from CHF after randomised treatment using Ramipril
+
+**Explanatory variables:** Age, Sex, History of Hypertension, History of Angina, History of Myocardial Infarction, Concomitant Aspirin, Concomitant Diuretic and Usage of Thrombolysis.
+
+```{r summary table, message= FALSE}
+AireX %>%
+tbl_summary(include = c("Group","Age", "Sex", "HistHT", "HistAngina", "HistMI", "Aspirin", "Diuretic", "UseThromb"),
+by = Group, percent = "row",
+label = list(Age = "Age in years",
+Sex = "Sex",
+HistHT = "History of Hypertension",
+HistAngina = "History of Angina",
+HistMI = "History of Myocardial Infarction",
+UseThromb = " Use of Thrombolysis",
+Aspirin = "Concomitant Aspirin",
+Diuretic = "Concomitant Diuretic")) %>%
+bold_labels() %>%
+add_p(pvalue_fun = ~ style_pvalue(.x, digits = 3))
+
+```
+
+## 5.1.Model to the Physician / Researcher:
+
+The final model is: 
+
+*~ Group + Diuretic:Group + UseThromb:Group + HistMI*
+
+## 5.2.Summary of Recommendations:
+
+1. Ramipril is associated with a lower risk of death compared to Placebo.\n
+2. Patients with a history of Myocardial Infarction have a 1.65 times higher risk of the event compared to those without.\n
+3. Diuretic use seems to further increase the risk of death for individuals in the Placebo group. \n
+4. Thrombolytic therapy seems to be associated with a higher risk of death for those in the Placebo group.\n
+5. The effect of Ramipril on survival seems to be more pronounced for individuals who received thrombolytic therapy \n
+6. History of Hypertension and Angina also shows poor survival. \n
+7. Participants in the  age group, 69 - 74 seem to be a significant risk factor to be considered clinically.  \n
+8. Male participants are at higher risk to survival. \n
+
+  The uses of ramipril, thrombolytic agents and diuretics, however, results in 50% reduction in hazard of death. Therefore, the male participants(or patients in future) who are above 60 years, with Clinical Heart Failure and  a history of Myocardial Infarction, can be put on Ramipril, ACE inhibitor, Diuretic and use of Thrombolysis agents to reduce the hazard(=death), like that of a person without the disease.
+
+## 5.3.Bibliography: 
+
+1.Petrie, A., & Sabin, C. (2020). Medical statistics at
+a glance (4th ed.). Wiley-Blackwell.\n 
+2.Kirkwood, B.R. and Sterne, J.A.C.
+(2003) Essential Medical Statistics. 2nd Edition, Blackwell Science,
+Oxford \n
+3.Janet L. Peacock and Phil J. Peacock () Oxford Handbook of
+Medical Statistics. 2nd Edition, Oxford University Press \n
+4.Follow-up study of patients randomly allocated ramipril or placebo
+for heart failure after acute myocardial infarction: AIRE Extension
+(AIREX) Study \n
+
+## 5.4.Abbrevations:
+
+*ACE:* Angiotensin-Converting-Enzyme
+*CHF:* Clinical Heart Failure
+*CI:* Confidence Intervals
+*HT:* Hypertension
+*KM:* Kaplan- Meier Plots/Estimates
+*MI:* Myocardial Infarction
+*PH:* Proportional Hazards
+
